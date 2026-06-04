@@ -52,8 +52,11 @@ pipeline {
                 echo 'Deploying to App Server...'
                 sshagent(['app-server-key']) {
                     sh """
-                        # Create app directory on server
-                        ssh -o StrictHostKeyChecking=no ${APP_USER}@${APP_SERVER} 'mkdir -p ${APP_DIR}'
+                        # Create directories on app server first
+                        ssh -o StrictHostKeyChecking=no ${APP_USER}@${APP_SERVER} '
+                            mkdir -p ${APP_DIR}/frontend-dist &&
+                            mkdir -p ${APP_DIR}/backend
+                        '
 
                         # Copy backend files
                         scp -o StrictHostKeyChecking=no -r backend/ ${APP_USER}@${APP_SERVER}:${APP_DIR}/
