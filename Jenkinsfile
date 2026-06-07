@@ -3,7 +3,6 @@ pipeline {
 
     tools {
         nodejs 'node-20'
-        sonarScanner 'sonar-scanner'
     }
 
     environment {
@@ -52,15 +51,20 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('sonarqube') {
-                    sh '''
-                        sonar-scanner \
-                            -Dsonar.projectKey=devops-practice-app \
-                            -Dsonar.sources=. \
-                            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.git/** \
-                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-                            -Dsonar.host.url=http://51.21.171.97:9000
-                    '''
+                script {
+                    // Resolve the sonar-scanner executable from global tools configuration
+                    def scannerHome = tool name: 'sonar-scanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+                    
+                    withSonarQubeEnv('sonarqube') {
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \\
+                                -Dsonar.projectKey=devops-practice-app \\
+                                -Dsonar.sources=. \\
+                                -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.git/** \\
+                                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \\
+                                -Dsonar.host.url=http://51.21.171.97:9000
+                        """
+                    }
                 }
             }
         }
