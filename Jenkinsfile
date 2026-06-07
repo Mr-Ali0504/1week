@@ -61,20 +61,43 @@ pipeline {
             }
         }
 
-        stage('Build & Push Docker Images') {
+        stage('Build Docker Images') {
+            steps {
+                sh '''
+                    # Build backend
+                    docker build -t $ACR_LOGIN_SERVER/backend:$IMAGE_TAG ./backend
+
+                    # Build frontend
+                    docker build -t $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG ./frontend
+                '''
+            }
+        }
+
+        stage('Scan Docker Images') {
+            steps {
+                sh '''
+                    # Scan backend image with Trivy
+                    # Exits with an error if HIGH or CRITICAL vulnerabilities are found
+                    trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress $ACR_LOGIN_SERVER/backend:$IMAGE_TAG
+
+                    # Scan frontend image with Trivy
+                    trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
+                '''
+            }
+        }
+
+        stage('Push Docker Images') {
             steps {
                 sh '''
                     # Login to ACR
                     az acr login --name levelup
 
-                    # Build and push backend
-                    docker build -t $ACR_LOGIN_SERVER/backend:$IMAGE_TAG ./backend
+                    # Push backend
                     docker push $ACR_LOGIN_SERVER/backend:$IMAGE_TAG
                     docker tag $ACR_LOGIN_SERVER/backend:$IMAGE_TAG $ACR_LOGIN_SERVER/backend:latest
                     docker push $ACR_LOGIN_SERVER/backend:latest
 
-                    # Build and push frontend
-                    docker build -t $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG ./frontend
+                    # Push frontend
                     docker push $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
                     docker tag $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG $ACR_LOGIN_SERVER/frontend:latest
                     docker push $ACR_LOGIN_SERVER/frontend:latest
