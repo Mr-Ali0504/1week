@@ -1,6 +1,9 @@
 # Stage 1 - Build
 FROM node:20-alpine AS builder
 
+# Upgrade OS packages to fix any High/Critical Trivy vulnerabilities
+RUN apk update && apk upgrade --no-cache
+
 WORKDIR /app
 
 # Copy package definitions
@@ -17,6 +20,9 @@ RUN npm run build
 
 # Stage 2 - Serve
 FROM nginx:alpine
+
+# Upgrade OS packages to fix any High/Critical Trivy vulnerabilities
+RUN apk update && apk upgrade --no-cache
 
 # Copy compiled assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html

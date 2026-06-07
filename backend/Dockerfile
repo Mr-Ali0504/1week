@@ -1,6 +1,9 @@
 # Use a specific Node.js alpine image
 FROM node:20-alpine
 
+# Upgrade OS packages to fix any High/Critical Trivy vulnerabilities
+RUN apk update && apk upgrade --no-cache
+
 # Set environment variable to production
 ENV NODE_ENV=production
 
