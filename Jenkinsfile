@@ -76,12 +76,12 @@ pipeline {
         stage('Scan Docker Images') {
             steps {
                 sh '''
-                    # Scan backend image with Trivy
+                    # Scan backend image with Trivy using its Docker container
                     # Exits with an error if HIGH or CRITICAL vulnerabilities are found
-                    trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress $ACR_LOGIN_SERVER/backend:$IMAGE_TAG
+                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress $ACR_LOGIN_SERVER/backend:$IMAGE_TAG
 
-                    # Scan frontend image with Trivy
-                    trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
+                    # Scan frontend image with Trivy using its Docker container
+                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
                 '''
             }
         }

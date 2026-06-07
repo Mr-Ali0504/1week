@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import './index.css';
 
 function App() {
@@ -78,6 +79,44 @@ function App() {
     }
   };
 
+  const onDragEnd = async (result) => {
+    const { destination, source, draggableId } = result;
+
+    if (!destination) return;
+
+    if (
+      destination.droppableId === source.droppableId &&
+      destination.index === source.index
+    ) {
+      return;
+    }
+
+    if (source.droppableId !== destination.droppableId) {
+      const newStatus = destination.droppableId;
+      
+      setTasks(prev => prev.map(t => 
+        t.id.toString() === draggableId ? { ...t, status: newStatus } : t
+      ));
+
+      try {
+        const res = await fetch(`${API_URL}/tasks/${draggableId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus }),
+        });
+        if (!res.ok) {
+          fetchTasks();
+        }
+      } catch (err) {
+        console.error(err);
+        fetchTasks();
+      }
+    }
+  };
+
+  const pendingTasks = tasks.filter(t => t.status === 'pending');
+  const completedTasks = tasks.filter(t => t.status === 'completed');
+
   return (
     <div className="app-container">
       <header className="header">
@@ -105,39 +144,103 @@ function App() {
         <button type="submit" className="btn-primary">Add Task</button>
       </form>
 
-      <div className="task-list">
-        {loading ? (
-          <p style={{ textAlign: 'center' }}>Loading tasks...</p>
-        ) : tasks.length === 0 ? (
-          <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No tasks found. Add one above!</p>
-        ) : (
-          tasks.map((task) => (
-            <div key={task.id} className="task-item">
-              <div className="task-content">
-                <h3>{task.title}</h3>
-                {task.description && <p>{task.description}</p>}
-                <span className={`task-status status-${task.status}`}>
-                  {task.status}
-                </span>
-              </div>
-              <div className="task-actions">
-                <button 
-                  className="btn-action"
-                  onClick={() => toggleStatus(task.id, task.status)}
+      <DragDropContext onDragEnd={onDragEnd}>
+        <div className="kanban-board">
+          <div className="kanban-column">
+            <h2>Pending</h2>
+            <Droppable droppableId="pending">
+              {(provided) => (
+                <div 
+                  className="task-list"
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
                 >
-                  {task.status === 'pending' ? 'Complete' : 'Reopen'}
-                </button>
-                <button 
-                  className="btn-action btn-delete"
-                  onClick={() => deleteTask(task.id)}
+                  {loading && pendingTasks.length === 0 ? (
+                    <p style={{ textAlign: 'center' }}>Loading tasks...</p>
+                  ) : pendingTasks.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No pending tasks.</p>
+                  ) : (
+                    pendingTasks.map((task, index) => (
+                      <Draggable key={task.id} draggableId={task.id.toString()} index={index}>
+                        {(provided, snapshot) => (
+                          <div 
+                            className={`task-item ${snapshot.isDragging ? 'dragging' : ''}`}
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            {...provided.dragHandleProps}
+                            style={provided.draggableProps.style}
+                          >
+                            <div className="task-content">
+                              <h3>{task.title}</h3>
+                              {task.description && <p>{task.description}</p>}
+                            </div>
+                            <div className="task-actions">
+                              <button 
+                                className="btn-action btn-delete"
+                                onClick={() => deleteTask(task.id)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </Draggable>
+                    ))
+                  )}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          </div>
+
+          <div className="kanban-column">
+            <h2>Completed</h2>
+            <Droppable droppableId="completed">
+              {(provided) => (
+                <div 
+                  className="task-list"
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
                 >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+                  {loading && completedTasks.length === 0 ? (
+                    <p style={{ textAlign: 'center' }}>Loading tasks...</p>
+                  ) : completedTasks.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No completed tasks.</p>
+                  ) : (
+                    completedTasks.map((task, index) => (
+                      <Draggable key={task.id} draggableId={task.id.toString()} index={index}>
+                        {(provided, snapshot) => (
+                          <div 
+                            className={`task-item ${snapshot.isDragging ? 'dragging' : ''}`}
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            {...provided.dragHandleProps}
+                            style={provided.draggableProps.style}
+                          >
+                            <div className="task-content">
+                              <h3>{task.title}</h3>
+                              {task.description && <p>{task.description}</p>}
+                            </div>
+                            <div className="task-actions">
+                              <button 
+                                className="btn-action btn-delete"
+                                onClick={() => deleteTask(task.id)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </Draggable>
+                    ))
+                  )}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          </div>
+        </div>
+      </DragDropContext>
     </div>
   );
 }
