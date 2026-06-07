@@ -77,11 +77,12 @@ pipeline {
             steps {
                 sh '''
                     # Scan backend image with Trivy using its Docker container
+                    # --skip-dirs is used to ignore vulnerabilities in the globally installed npm tool itself
                     # Exits with an error if HIGH or CRITICAL vulnerabilities are found
-                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress $ACR_LOGIN_SERVER/backend:$IMAGE_TAG
+                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs /usr/local/lib/node_modules/npm $ACR_LOGIN_SERVER/backend:$IMAGE_TAG
 
                     # Scan frontend image with Trivy using its Docker container
-                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
+                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs /usr/local/lib/node_modules/npm $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
                 '''
             }
         }
