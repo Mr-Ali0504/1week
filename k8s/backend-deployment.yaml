@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: levelup.azurecr.io/backend:latest
+          image: levelup.azurecr.io/backend:__IMAGE_TAG__
           ports:
             - containerPort: 3000
           env:

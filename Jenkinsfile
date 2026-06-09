@@ -17,34 +17,23 @@ pipeline {
     }
 
     stages {
-
-        stage('Checkout') {
-            steps {
-                echo 'Cloning repository...'
-                checkout scm
-            }
-        }
-
-        stage('Install Backend Dependencies') {
-            steps {
-                dir('backend') {
-                    sh 'npm install'
+        stage('Analysis & Test Prep') {
+            parallel {
+                stage('Backend Prep') {
+                    steps {
+                        dir('backend') {
+                            sh 'npm ci'
+                            sh 'npm test --if-present || true'
+                        }
+                    }
                 }
-            }
-        }
-
-        stage('Install Frontend Dependencies') {
-            steps {
-                dir('frontend') {
-                    sh 'npm install'
-                }
-            }
-        }
-
-        stage('Build Frontend') {
-            steps {
-                dir('frontend') {
-                    sh 'npm run build'
+                stage('Frontend Prep') {
+                    steps {
+                        dir('frontend') {
+                            sh 'npm ci'
+                            sh 'npm run test --if-present || true'
+                        }
+                    }
                 }
             }
         }
@@ -61,8 +50,7 @@ pipeline {
                                 -Dsonar.projectKey=devops-practice-app \\
                                 -Dsonar.sources=. \\
                                 -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.git/** \\
-                                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \\
-                                -Dsonar.host.url=http://51.21.171.97:9000
+                                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
                         """
                     }
                 }
@@ -80,9 +68,9 @@ pipeline {
         stage('Azure Login') {
             steps {
                 sh '''
-                    az login --service-principal \
-                        --username $AZURE_CLIENT_ID \
-                        --password $AZURE_CLIENT_SECRET \
+                    az login --service-principal \\
+                        --username $AZURE_CLIENT_ID \\
+                        --password $AZURE_CLIENT_SECRET \\
                         --tenant $AZURE_TENANT_ID
                     az account set --subscription $AZURE_SUBSCRIPTION_ID
                 '''
@@ -90,47 +78,59 @@ pipeline {
         }
 
         stage('Build Docker Images') {
-            steps {
-                sh '''
-                    # Build backend
-                    docker build -t $ACR_LOGIN_SERVER/backend:$IMAGE_TAG ./backend
-
-                    # Build frontend
-                    docker build -t $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG ./frontend
-                '''
+            parallel {
+                stage('Build Backend') {
+                    steps {
+                        sh 'docker build -t $ACR_LOGIN_SERVER/backend:$IMAGE_TAG ./backend'
+                    }
+                }
+                stage('Build Frontend') {
+                    steps {
+                        sh 'docker build -t $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG ./frontend'
+                    }
+                }
             }
         }
 
         stage('Scan Docker Images') {
-            steps {
-                sh '''
-                    # Scan backend image with Trivy using its Docker container
-                    # --skip-dirs is used to ignore vulnerabilities in the globally installed npm tool itself
-                    # Exits with an error if HIGH or CRITICAL vulnerabilities are found
-                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs /usr/local/lib/node_modules/npm $ACR_LOGIN_SERVER/backend:$IMAGE_TAG
-
-                    # Scan frontend image with Trivy using its Docker container
-                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs /usr/local/lib/node_modules/npm $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
-                '''
+            parallel {
+                stage('Scan Backend') {
+                    steps {
+                        sh '''
+                            docker save $ACR_LOGIN_SERVER/backend:$IMAGE_TAG -o backend.tar
+                            docker run --rm -v $(pwd):/workspace -w /workspace -v trivy-cache:/root/.cache/ aquasec/trivy image --input backend.tar --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs /usr/local/lib/node_modules/npm
+                        '''
+                    }
+                }
+                stage('Scan Frontend') {
+                    steps {
+                        sh '''
+                            docker save $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG -o frontend.tar
+                            docker run --rm -v $(pwd):/workspace -w /workspace -v trivy-cache:/root/.cache/ aquasec/trivy image --input frontend.tar --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs /usr/local/lib/node_modules/npm
+                        '''
+                    }
+                }
             }
         }
 
         stage('Push Docker Images') {
-            steps {
-                sh '''
-                    # Login to ACR
-                    az acr login --name levelup
-
-                    # Push backend
-                    docker push $ACR_LOGIN_SERVER/backend:$IMAGE_TAG
-                    docker tag $ACR_LOGIN_SERVER/backend:$IMAGE_TAG $ACR_LOGIN_SERVER/backend:latest
-                    docker push $ACR_LOGIN_SERVER/backend:latest
-
-                    # Push frontend
-                    docker push $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
-                    docker tag $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG $ACR_LOGIN_SERVER/frontend:latest
-                    docker push $ACR_LOGIN_SERVER/frontend:latest
-                '''
+            parallel {
+                stage('Push Backend') {
+                    steps {
+                        sh '''
+                            az acr login --name levelup
+                            docker push $ACR_LOGIN_SERVER/backend:$IMAGE_TAG
+                        '''
+                    }
+                }
+                stage('Push Frontend') {
+                    steps {
+                        sh '''
+                            az acr login --name levelup
+                            docker push $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
+                        '''
+                    }
+                }
             }
         }
 
@@ -138,10 +138,14 @@ pipeline {
             steps {
                 sh '''
                     # Get AKS credentials
-                    az aks get-credentials \
-                        --resource-group $RESOURCE_GROUP \
-                        --name $AKS_CLUSTER \
+                    az aks get-credentials \\
+                        --resource-group $RESOURCE_GROUP \\
+                        --name $AKS_CLUSTER \\
                         --overwrite-existing
+
+                    # Update image tags in manifests using sed
+                    sed -i "s|__IMAGE_TAG__|$IMAGE_TAG|g" k8s/backend-deployment.yaml
+                    sed -i "s|__IMAGE_TAG__|$IMAGE_TAG|g" k8s/frontend-deployment.yaml
 
                     # Apply manifests
                     kubectl apply -f k8s/namespace.yaml
@@ -149,27 +153,23 @@ pipeline {
                     kubectl apply -f k8s/backend-deployment.yaml
                     kubectl apply -f k8s/frontend-deployment.yaml
 
-                    # Update images with new tag
-                    kubectl set image deployment/backend \
-                        backend=$ACR_LOGIN_SERVER/backend:$IMAGE_TAG \
-                        -n devops-practice
-
-                    kubectl set image deployment/frontend \
-                        frontend=$ACR_LOGIN_SERVER/frontend:$IMAGE_TAG \
-                        -n devops-practice
-
-                    # Wait for rollout
-                    kubectl rollout status deployment/backend -n devops-practice
-                    kubectl rollout status deployment/frontend -n devops-practice
-
-                    # Get external IP
-                    kubectl get service frontend -n devops-practice
+                    # Wait for rollout with automatic rollback on failure
+                    kubectl rollout status deployment/backend -n devops-practice --timeout=2m || (kubectl rollout undo deployment/backend -n devops-practice && exit 1)
+                    kubectl rollout status deployment/frontend -n devops-practice --timeout=2m || (kubectl rollout undo deployment/frontend -n devops-practice && exit 1)
                 '''
             }
         }
     }
 
     post {
+        always {
+            echo 'Cleaning up local Docker images and tarballs to free space...'
+            sh '''
+                rm -f backend.tar frontend.tar
+                docker rmi $ACR_LOGIN_SERVER/backend:$IMAGE_TAG || true
+                docker rmi $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG || true
+            '''
+        }
         success {
             echo 'Deployment to AKS successful!'
             sh 'kubectl get service frontend -n devops-practice'

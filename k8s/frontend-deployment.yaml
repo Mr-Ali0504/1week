@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: levelup.azurecr.io/frontend:latest
+          image: levelup.azurecr.io/frontend:__IMAGE_TAG__
           ports:
             - containerPort: 80
 ---
