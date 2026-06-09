@@ -98,7 +98,7 @@ pipeline {
                     steps {
                         sh '''
                             docker save $ACR_LOGIN_SERVER/backend:$IMAGE_TAG -o backend.tar
-                            docker run --rm -v $(pwd):/workspace -w /workspace -v trivy-cache:/root/.cache/ aquasec/trivy image --input backend.tar --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs /usr/local/lib/node_modules/npm
+                            docker run --rm -v $(pwd):/workspace -w /workspace -v trivy-cache-backend:/root/.cache/ aquasec/trivy image --input backend.tar --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs /usr/local/lib/node_modules/npm
                         '''
                     }
                 }
@@ -106,7 +106,7 @@ pipeline {
                     steps {
                         sh '''
                             docker save $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG -o frontend.tar
-                            docker run --rm -v $(pwd):/workspace -w /workspace -v trivy-cache:/root/.cache/ aquasec/trivy image --input frontend.tar --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs /usr/local/lib/node_modules/npm
+                            docker run --rm -v $(pwd):/workspace -w /workspace -v trivy-cache-frontend:/root/.cache/ aquasec/trivy image --input frontend.tar --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs /usr/local/lib/node_modules/npm
                         '''
                     }
                 }
