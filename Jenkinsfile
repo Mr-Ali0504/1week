@@ -50,7 +50,7 @@ pipeline {
                                 -Dsonar.projectKey=devops-practice-app \\
                                 -Dsonar.sources=. \\
                                 -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.git/** \\
-                                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                                -Dsonar.javascript.lcov.reportPaths=backend/coverage/lcov.info,frontend/coverage/lcov.info
                         """
                     }
                 }
