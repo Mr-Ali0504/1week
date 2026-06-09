@@ -66,6 +66,14 @@ describe('Backend API Routes', () => {
       expect(res.statusCode).toEqual(404);
       expect(res.body.error).toEqual('Task not found');
     });
+
+    it('should handle database errors', async () => {
+      pool.query.mockRejectedValueOnce(new Error('DB Error'));
+
+      const res = await request(app).get('/api/tasks/1');
+      expect(res.statusCode).toEqual(500);
+      expect(res.body.error).toEqual('Server error');
+    });
   });
 
   describe('POST /api/tasks', () => {
@@ -82,6 +90,14 @@ describe('Backend API Routes', () => {
         ['New Task', 'Desc']
       );
     });
+
+    it('should handle database errors', async () => {
+      pool.query.mockRejectedValueOnce(new Error('DB Error'));
+
+      const res = await request(app).post('/api/tasks').send({ title: 'T' });
+      expect(res.statusCode).toEqual(500);
+      expect(res.body.error).toEqual('Server error');
+    });
   });
 
   describe('PUT /api/tasks/:id', () => {
@@ -97,6 +113,14 @@ describe('Backend API Routes', () => {
         ['completed', '1']
       );
     });
+
+    it('should handle database errors', async () => {
+      pool.query.mockRejectedValueOnce(new Error('DB Error'));
+
+      const res = await request(app).put('/api/tasks/1').send({ status: 'done' });
+      expect(res.statusCode).toEqual(500);
+      expect(res.body.error).toEqual('Server error');
+    });
   });
 
   describe('DELETE /api/tasks/:id', () => {
@@ -107,6 +131,14 @@ describe('Backend API Routes', () => {
       expect(res.statusCode).toEqual(200);
       expect(res.body.message).toEqual('Task deleted successfully');
       expect(pool.query).toHaveBeenCalledWith('DELETE FROM tasks WHERE id = $1 RETURNING *', ['1']);
+    });
+
+    it('should handle database errors', async () => {
+      pool.query.mockRejectedValueOnce(new Error('DB Error'));
+
+      const res = await request(app).delete('/api/tasks/1');
+      expect(res.statusCode).toEqual(500);
+      expect(res.body.error).toEqual('Server error');
     });
   });
 });

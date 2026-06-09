@@ -49,7 +49,7 @@ pipeline {
                             ${scannerHome}/bin/sonar-scanner \\
                                 -Dsonar.projectKey=devops-practice-app \\
                                 -Dsonar.sources=. \\
-                                -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.git/** \\
+                                -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.git/**,**/coverage/** \\
                                 -Dsonar.javascript.lcov.reportPaths=backend/coverage/lcov.info,frontend/coverage/lcov.info
                         """
                     }
