@@ -93,42 +93,54 @@ pipeline {
         }
 
         stage('Scan Docker Images') {
-            parallel {
-                stage('Scan Backend') {
+            stages {
+                stage('Download Trivy DB') {
                     steps {
-                        sh '''
-                            docker save $ACR_LOGIN_SERVER/backend:$IMAGE_TAG -o backend.tar
-                            docker run --rm -v $(pwd):/workspace -w /workspace -v trivy-cache-backend:/root/.cache/ aquasec/trivy image --input backend.tar --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs /usr/local/lib/node_modules/npm
-                        '''
+                        sh 'docker run --rm -v trivy-cache:/root/.cache/ aquasec/trivy image --download-db-only --no-progress'
                     }
                 }
-                stage('Scan Frontend') {
-                    steps {
-                        sh '''
-                            docker save $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG -o frontend.tar
-                            docker run --rm -v $(pwd):/workspace -w /workspace -v trivy-cache-frontend:/root/.cache/ aquasec/trivy image --input frontend.tar --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs /usr/local/lib/node_modules/npm
-                        '''
+                stage('Run Parallel Scans') {
+                    parallel {
+                        stage('Scan Backend') {
+                            steps {
+                                sh '''
+                                    docker save $ACR_LOGIN_SERVER/backend:$IMAGE_TAG -o backend.tar
+                                    docker run --rm -v $(pwd):/workspace -w /workspace -v trivy-cache:/root/.cache/ aquasec/trivy image --skip-db-update --input backend.tar --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs /usr/local/lib/node_modules/npm
+                                '''
+                            }
+                        }
+                        stage('Scan Frontend') {
+                            steps {
+                                sh '''
+                                    docker save $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG -o frontend.tar
+                                    docker run --rm -v $(pwd):/workspace -w /workspace -v trivy-cache:/root/.cache/ aquasec/trivy image --skip-db-update --input frontend.tar --severity HIGH,CRITICAL --exit-code 1 --no-progress --skip-dirs /usr/local/lib/node_modules/npm
+                                '''
+                            }
+                        }
                     }
                 }
             }
         }
 
         stage('Push Docker Images') {
-            parallel {
-                stage('Push Backend') {
+            stages {
+                stage('Login to ACR') {
                     steps {
-                        sh '''
-                            az acr login --name levelup
-                            docker push $ACR_LOGIN_SERVER/backend:$IMAGE_TAG
-                        '''
+                        sh 'az acr login --name levelup'
                     }
                 }
-                stage('Push Frontend') {
-                    steps {
-                        sh '''
-                            az acr login --name levelup
-                            docker push $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG
-                        '''
+                stage('Push to ACR') {
+                    parallel {
+                        stage('Push Backend') {
+                            steps {
+                                sh 'docker push $ACR_LOGIN_SERVER/backend:$IMAGE_TAG'
+                            }
+                        }
+                        stage('Push Frontend') {
+                            steps {
+                                sh 'docker push $ACR_LOGIN_SERVER/frontend:$IMAGE_TAG'
+                            }
+                        }
                     }
                 }
             }
@@ -154,8 +166,11 @@ pipeline {
                     kubectl apply -f k8s/frontend-deployment.yaml
 
                     # Wait for rollout with automatic rollback on failure
-                    kubectl rollout status deployment/backend -n devops-practice --timeout=2m || (kubectl rollout undo deployment/backend -n devops-practice && exit 1)
-                    kubectl rollout status deployment/frontend -n devops-practice --timeout=2m || (kubectl rollout undo deployment/frontend -n devops-practice && exit 1)
+                    kubectl rollout status deployment/backend -n devops-practice --timeout=2m || \\
+                        (kubectl rollout undo deployment/backend -n devops-practice && exit 1)
+                        
+                    kubectl rollout status deployment/frontend -n devops-practice --timeout=2m || \\
+                        (kubectl rollout undo deployment/frontend -n devops-practice && exit 1)
                 '''
             }
         }
@@ -172,10 +187,13 @@ pipeline {
         }
         success {
             echo 'Deployment to AKS successful!'
+            // Production environments should notify a Slack channel or email.
+            // slackSend(channel: '#deployments', color: 'good', message: "Deployment successful for $IMAGE_TAG")
             sh 'kubectl get service frontend -n devops-practice'
         }
         failure {
             echo 'Pipeline failed! Check the logs above.'
+            // slackSend(channel: '#deployments', color: 'danger', message: "Deployment FAILED for $IMAGE_TAG")
         }
     }
 }
