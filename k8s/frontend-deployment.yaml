@@ -3,8 +3,17 @@ kind: Deployment
 metadata:
   name: frontend
   namespace: devops-practice
+  labels:
+    app: frontend
+    tier: web
 spec:
-  replicas: 1
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
   selector:
     matchLabels:
       app: frontend
@@ -12,22 +21,159 @@ spec:
     metadata:
       labels:
         app: frontend
+        tier: web
     spec:
+      # --- Security: don't run as root ---
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101        # nginx user in alpine
+        runAsGroup: 101
+        fsGroup: 101
+
       containers:
         - name: frontend
           image: levelup.azurecr.io/frontend:__IMAGE_TAG__
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
+              protocol: TCP
+
+          # --- Resource management ---
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+
+          # --- Health checks ---
+          # Readiness: is the pod ready to receive traffic?
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # Liveness: is the pod still alive and responding?
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # Startup: give the container time to start before liveness kicks in
+          startupProbe:
+            httpGet:
+              path: /
+              port: 80
+            failureThreshold: 10
+            periodSeconds: 3
+
+          # --- Container security hardening ---
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          # --- Nginx needs writable tmp dirs ---
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+
+      # --- Spread pods across nodes ---
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: frontend
+                topologyKey: kubernetes.io/hostname
+
+      # --- Graceful shutdown ---
+      terminationGracePeriodSeconds: 30
+
 ---
+# --- Service: ClusterIP instead of LoadBalancer ---
+# Use with an Ingress controller to save cost and gain routing flexibility
 apiVersion: v1
 kind: Service
 metadata:
   name: frontend
   namespace: devops-practice
+  labels:
+    app: frontend
+    tier: web
 spec:
   selector:
     app: frontend
   ports:
     - port: 80
       targetPort: 80
-  type: LoadBalancer
+      protocol: TCP
+  type: ClusterIP
+
+---
+# --- Pod Disruption Budget ---
+# Ensures at least 1 pod is always running during node upgrades/scaling
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend-pdb
+  namespace: devops-practice
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: frontend
+
+---
+# --- Horizontal Pod Autoscaler ---
+# Scales between 2-8 replicas based on CPU usage
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend-hpa
+  namespace: devops-practice
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
