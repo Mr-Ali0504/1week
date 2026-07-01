@@ -1,0 +1,102 @@
+---
+# ConfigMap for init.sql
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-init-script
+  namespace: 1week-app
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS tasks (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        status VARCHAR(50) DEFAULT 'pending',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    INSERT INTO tasks (title, description, status) VALUES
+    ('Setup NGINX', 'Configure NGINX as a reverse proxy for the application', 'pending'),
+    ('Deploy to Azure', 'Wrap backend into Azure Functions and deploy frontend', 'pending'),
+    ('Containerize', 'Write Dockerfiles for frontend and backend', 'pending');
+
+---
+# Secret for DB credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-secret
+  namespace: 1week-app
+type: Opaque
+stringData:
+  POSTGRES_DB: taskmanager
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres123
+
+---
+# PersistentVolumeClaim for DB data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: 1week-app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# PostgreSQL Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: database
+  namespace: 1week-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: database
+  template:
+    metadata:
+      labels:
+        app: database
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: db-secret
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-script
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+        - name: init-script
+          configMap:
+            name: db-init-script
+
+---
+# Database Service (internal only)
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+  namespace: 1week-app
+spec:
+  selector:
+    app: database
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP

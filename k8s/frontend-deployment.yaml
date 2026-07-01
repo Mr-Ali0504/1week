@@ -1,0 +1,37 @@
+---
+# Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: 1week-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: levelupacr.azurecr.io/1week-frontend:latest
+          ports:
+            - containerPort: 80
+
+---
+# Frontend Service (public LoadBalancer)
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: 1week-app
+spec:
+  selector:
+    app: frontend
+  ports:
+    - port: 80
+      targetPort: 80
+  type: LoadBalancer
