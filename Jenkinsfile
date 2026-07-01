@@ -2,30 +2,21 @@ pipeline {
     agent any
     
     stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-        
         stage('Build') {
             steps {
-                echo 'Building the application...'
-                // Add build commands here, e.g., for frontend/backend
+                echo 'Building...'
             }
         }
         
         stage('Test') {
             steps {
-                echo 'Running tests...'
-                // Add test commands here
+                echo 'Testing...'
             }
         }
         
         stage('Deploy') {
             steps {
-                echo 'Deploying the application...'
-                // Add deployment commands here
+                echo 'Deploying...'
             }
         }
     }
